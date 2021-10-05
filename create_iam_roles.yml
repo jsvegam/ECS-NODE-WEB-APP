@@ -1,0 +1,164 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: create IAM roles for ECS usage upfront
+Parameters:
+  EnvironmentName:
+  Type: String
+  Default: ecs-course
+  Description: "nombre que sera utilizado como namespace para todos los recursos del cluster."
+
+Resources:
+
+  EC2Role:
+  Type: AWS::IAM::Role
+  Properties:
+    AssumerOLESpolicyDocument:
+     Statement:
+     - Effect: Allow
+       Principal:
+        Service: [ec2.amazonaws.com]
+       Action: ['sts:AssumeRole']
+    Path: /
+    Policies:
+    - PolicyDocument:
+        Statement:
+        - Effect: Allow
+          Action:
+           - 'ecs:CreateCluster'
+           - 'ecs:DeregisterContainerIntsnace'
+           - 'ecs:DiscoverPollEndPoint'
+           - 'ecs:Poll'
+           - 'ecs:RegisterContainerInstance'
+           - 'ecs:StartTelemetrySession'
+           - 'ecs:Submit*'
+           - 'logs:CreateLogStream'
+           - 'logs:PutLogEvents'
+           - 'ecr:GetAuthorizationToken'
+           - 'ecr:BatchGetImage'
+           - 'ecr:GetDownloadUrlForLayer'
+          Resource: '*'
+  
+  ECSRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: [ecs.amazonaws.com]
+          Action: ['sts:AssumeRole']
+          Path: /
+          Policies:
+          - PolicyName: ecs-service
+            PolicyDocument:
+              Statement:
+              - Effect: Allow
+                Action:
+              # Rules which allow ECS to attach network interfaces to instances
+              # on your behalf in order for awsvpc networking mode to work right
+              - 'ec2:AttachNetworkInterface'
+              - 'ec2:CreateNetworkInterface'
+              - 'ec2:CreateNetworkInterfacePermission'
+              - 'ec2:DeleteNetworkInterface'
+              - 'ec2:DeleteNetworkInterfacePermission'
+              - 'ec2:Describe*'
+              - 'ec2:DetachNetworkInterface'
+
+              # Rules which allow ECS to update load balancers on your behalf
+              # with the information sabout how to send traffic to your containers
+              - 'elasticloadbalancing:DeregisterInstancesFromLoadBalancer'
+              - 'elasticloadbalancing:DeregisterTargets'
+              - 'elasticloadbalancing:Describe*'
+              - 'elasticloadbalancing:RegisterInstancesWithLoadBalancer'
+              - 'elasticloadbalancing:RegisterTargets'
+            Resource: '*'
+
+  ECSTaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties: 
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: [ecs-tasks.amazonaws.com]
+          Action: ['sts:AssumeRole']
+      Path: /
+      Policies:
+        - PolicyName: AmazonECSTaskExecutionRolePolicy
+          PolicyDocument:
+            Statement:
+            - Effect: Allow
+              Action:
+                # Allow the ECS Tasks to download images from ECR
+                - 'ecr:GetAuthorizationToken'
+                - 'ecr:BatchCheckLayerAvailability'
+                - 'ecr:GetDownloadUrlForLayer'
+                - 'ecr:BatchGetImage'
+                # Allow the ECS tasks to upload logs to CloudWatch
+                - 'logs:CreateLogStream'
+                - 'logs:PutLogEvents'
+              Resource: '*'
+
+  AutoscalingRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: [application-autoscaling.amazonaws.com]
+          Action: ['sts:AssumeRole']
+      Path: /
+      Policies:
+      - PolicyName: service-autoscaling
+        PolicyDocument:
+          Statement:
+          - Effect: Allow
+            Action:
+              - 'application-autoscaling:*'
+              - 'cloudwatch:DescribeAlarms'
+              - 'cloudwatch:PutMetricAlarm'
+              - 'ecs:DescribeServices'
+              - 'ecs:UpdateService'
+            Resource: '*'
+
+Outputs:
+
+  ECSRole:
+    Description: ARN del role ECS
+    Value: !GetAtt 'ECSRole.Arn'
+    Export: 
+      Name: !Sub ${EnvironmentName}:ECSRole
+  
+  EC2Role:
+    Description: ARN del rol EC2
+    Value: !GetAtt 'EC2Role.Arn'
+    Export:
+      Name: !Sub ${EnvironmentName}:EC2Role
+
+  ECSTaskExecutionRole:
+    Description: ARN del role de ejecución para la tarea
+    Value: !GeAtt 'ECSTaskExecutionrole.Arn'
+    Export:
+      Name: !Sub ${EnvironmentName}:ECSTaskexecutionRole.Arn
+
+  AutoscalingRole:
+    Description: ARN del role utilizado para el autoscaling
+    Value: !GeAtt 'AutoscalingRole.Arn'
+    Export:
+      Name: !Sub ${EnvironmentName}:AutoscalingRole
+
+  
+
+
+
+
+      
+
+
+          
+          
+
+
+
+
+  
