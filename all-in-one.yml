@@ -1,0 +1,226 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: create IAM roles for ECS usage upfront
+Parameters:
+  EnvironmentName:
+    Type: String
+    Default: ecs-course-cf
+    Description: "nombre que sera utilizado como namespace para todos los recursos del cluster."
+
+Resources:
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Sub ${EnvironmentName}-ec2
+
+  ECSContainerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Acceso al ECS host que ejecurara los contenedores
+      VpcId:
+        Fn::ImportValue: !Sub ${EnvironmentName}:VpcId
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: 80
+        ToPort: 80
+        CidrIp: 0.0.0.0/0
+      - IpProtocol: tcp
+        FromPort: 22
+        ToPort: 22
+        CidrIp: 0.0.0.0/0
+
+
+  EC2Role:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: [ec2.amazonaws.com]
+          Action: ['sts:AssumeRole']
+        Path: /
+        Policies:
+        - PolicyName: ecs-role-ec2-cf
+        - PolicyDocument:
+            Statement:
+            - Effect: Allow
+              Action:
+              - 'ecs:CreateCluster'
+              - 'ecs:DeregisterContainerIntsnace'
+              - 'ecs:DiscoverPollEndPoint'
+              - 'ecs:Poll'
+              - 'ecs:RegisterContainerInstance'
+              - 'ecs:StartTelemetrySession'
+              - 'ecs:Submit*'
+              - 'logs:CreateLogStream'
+              - 'logs:PutLogEvents'
+              - 'ecr:GetAuthorizationToken'
+              - 'ecr:BatchGetImage'
+              - 'ecr:GetDownloadUrlForLayer'
+              Resource: '*'
+  
+  ECSRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: [ecs.amazonaws.com]
+          Action: ['sts:AssumeRole']
+        Path: /
+        Policies:
+        - PolicyName: ecs-service-cf
+        - PolicyDocument:
+            Statement:
+            - Effect: Allow
+              Action:
+              # Rules which allow ECS to attach network interfaces to instances
+              # on your behalf in order for awsvpc networking mode to work right
+              - 'ec2:AttachNetworkInterface'
+              - 'ec2:CreateNetworkInterface'
+              - 'ec2:CreateNetworkInterfacePermission'
+              - 'ec2:DeleteNetworkInterface'
+              - 'ec2:DeleteNetworkInterfacePermission'
+              - 'ec2:Describe*'
+              - 'ec2:DetachNetworkInterface'
+
+              # Rules which allow ECS to update load balancers on your behalf
+              # with the information sabout how to send traffic to your containers
+              - 'elasticloadbalancing:DeregisterInstancesFromLoadBalancer'
+              - 'elasticloadbalancing:DeregisterTargets'
+              - 'elasticloadbalancing:Describe*'
+              - 'elasticloadbalancing:RegisterInstancesWithLoadBalancer'
+              - 'elasticloadbalancing:RegisterTargets'
+            Resource: '*'
+
+  ECSTaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties: 
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: [ecs-tasks.amazonaws.com]
+          Action: ['sts:AssumeRole']
+      Path: /
+      Policies:
+        - PolicyName: ecs-task-cf
+          PolicyDocument:
+            Statement:
+            - Effect: Allow
+              Action:
+                # Allow the ECS Tasks to download images from ECR
+                - 'ecr:GetAuthorizationToken'
+                - 'ecr:BatchCheckLayerAvailability'
+                - 'ecr:GetDownloadUrlForLayer'
+                - 'ecr:BatchGetImage'
+                # Allow the ECS tasks to upload logs to CloudWatch
+                - 'logs:CreateLogStream'
+                - 'logs:PutLogEvents'
+              Resource: '*'
+
+  AutoscalingRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: [application-autoscaling.amazonaws.com]
+          Action: ['sts:AssumeRole']
+      Path: /
+      Policies:
+      - PolicyName: service-autoscaling
+        PolicyDocument:
+          Statement:
+          - Effect: Allow
+            Action:
+              - 'application-autoscaling:*'
+              - 'cloudwatch:DescribeAlarms'
+              - 'cloudwatch:PutMetricAlarm'
+              - 'ecs:DescribeServices'
+              - 'ecs:UpdateService'
+            Resource: '*'
+
+
+############################################
+############# Task Definition ##############
+############################################
+  Taskdefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: deployment-example-task
+      Cpu: 256
+      Memory: 256
+      NetworkMode: awsvpc
+      ExecutionRoleArn: !Ref ECSTaskExecutionRole
+      ContainerDefinitions:
+        - Name: poc-hybrid-docker-banner
+          Image: jsvegam/poc-hybrid-docker-banner:latest
+          PortMappings:
+            - hostPort: 0
+            - protocol: tcp
+            - ContainerPort: 80
+          # LogConfiguration:
+          #   LogDriver: awslogs
+          #   Options:
+          #     awslogs-region: !Ref AWS::Region
+          #     awslogs-group: !Ref LogGroup
+          #     awslogs-streams-prefix: ecs
+      RequiresCompabilities:
+        - "EC2"
+        - "FARGATE"
+
+  ECSService:
+    Type: AWS::ECS::Service
+    Properties:
+      Cluster: !Ref ECSCluster
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 100
+      DesiredCount: 0
+      # HealthCheckGracePeriodSeconds: !Ref HealthCheckGracePeriodSeconds
+      # LoadBalancers:
+      #   - ContainerName: !Ref AppName
+      #     ContainerPort: !Ref AppContainerPort
+      #     LoadBalancerName: !Ref elb
+      # PlacementStrategies:
+      #   - Type: binpack
+      #     Field: memory
+      #   - Type: spread
+      #     Field: host
+      # PlacementConstraints:
+      #   - Type: memberOf
+      #     Expression: 'attribute:ecs.availability-zone != us-east-1d'
+      # - Type: distinctInstance
+      TaskDefinition: !Ref Taskdefinition
+      ServiceName: !Ref EnvironmentName
+      Role: !Ref ECSRole
+
+  
+Outputs:
+
+  ECSRole:
+    Description: ARN del role ECS
+    Value: !GetAtt 'ECSRole.Arn'
+    Export: 
+      Name: !Sub ${EnvironmentName}:ECSRole
+  
+  EC2Role:
+    Description: ARN del rol EC2
+    Value: !GetAtt 'EC2Role.Arn'
+    Export:
+      Name: !Sub ${EnvironmentName}:EC2Role
+
+  ECSTaskExecutionRole:
+    Description: ARN del role de ejecución para la tarea
+    Value: !GetAtt 'ECSTaskExecutionRole.Arn'
+    Export:
+      Name: !Sub ${EnvironmentName}:ECSTaskExecutionRole
+
+  AutoscalingRole:
+    Description: ARN del role utilizado para el autoscaling
+    Value: !GetAtt 'AutoscalingRole.Arn'
+    Export:
+      Name: !Sub ${EnvironmentName}:AutoscalingRole

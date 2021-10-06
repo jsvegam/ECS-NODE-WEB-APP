@@ -1,0 +1,27 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Resources:
+  Taskdefinition:
+  Type: AWS::ECS::TaskDAefinition
+  Properties:
+    Family: deployment-example-task
+    Cpu: 256
+    Memory: 256
+    NetworkMode: awsvpc
+    ExecutionRoleArn: !Ref ExecutionRole
+    ContainerDefinitions:
+      - Name: poc-hybrid-docker-banner
+        Image: jsvegam/poc-hybrid-docker-banner:latest
+        PortMappings:
+          - hostPort: 0
+          - protocol: tcp
+          - ContainerPort: 80
+        LogConfiguration:
+          LogDriver: awslogs
+          Options:
+            awslogs-region: !Ref AWS::Region
+            awslogs-group: !Ref LogGroup
+            awslogs-streams-prefix: ecs
+    RequiresCompabilities:
+      - "EC2"
+      - "FARGATE"
+

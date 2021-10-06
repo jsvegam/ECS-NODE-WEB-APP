@@ -1,0 +1,33 @@
+Type: AWS::ECS::Service
+Properties:
+  CapacityProvidersStrategy:
+    - CapacityProvidersStrategyItem
+  Cluster: String
+  DeploymentConfiguration:
+    DeploymentConfiguration
+  DeploymentController:
+    DeploymentController
+  DesiredCount: Int
+  EnableECSManagedTags: Boolean
+  EnableExecuteCommand: Boolean
+  HealthCheckGracePeriodSeconds:
+  Launchtype: String
+  LoadBalancers:
+    - LoadBalancers:
+  NetworkConfiguration:
+    NetworkConfiguration
+  PlacementConstraints:
+    - PlacementConstraint
+  PlacementStrategies:
+    - PlacementStrategies:
+  PlatformVersion: String
+  PropagateTags: Strings
+  Role: String
+  SchedulingStrategy: String
+  ServiceName: String
+  Servicename: String
+  ServicesRegistries:
+    - Serviceregistry
+  Tags:
+    - Tag
+  TaskDefinition: String    
